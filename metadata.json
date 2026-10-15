@@ -1,0 +1,8 @@
+{
+  "name": "SG BusRadar - LTA Real-Time Bus & Delays",
+  "description": "Real-time Singapore LTA bus arrival timings, live bus tracking on interactive map, delay alerts, and stop notifications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
