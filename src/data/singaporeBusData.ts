@@ -157,6 +157,15 @@ export const SINGAPORE_BUS_STOPS: BusStop[] = [
     mrtInterchange: { name: 'Bedok', lines: ['EWL'] },
     services: ['7', '14', '30', '35', '60', '66', '69', '168'],
   },
+  {
+    code: '83139',
+    name: 'Opp Blk 22 / Marine Crescent',
+    road: 'Marine Parade Rd',
+    latitude: 1.3038,
+    longitude: 103.9085,
+    mrtInterchange: { name: 'Marine Terrace', lines: ['TEL'] },
+    services: ['13', '16', '31', '36', '43', '48', '55', '135', '196', '197'],
+  },
 
   // Bishan & Ang Mo Kio (Central North Hubs)
   {

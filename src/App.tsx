@@ -57,6 +57,8 @@ export default function App() {
   const [refreshCountdown, setRefreshCountdown] = useState(15);
   const [lastUpdatedTime, setLastUpdatedTime] = useState(new Date().toLocaleTimeString('en-SG', { hour12: false }));
   const [isLocating, setIsLocating] = useState(false);
+  const [apiSource, setApiSource] = useState<'live_lta' | 'simulated'>('simulated');
+  const [liveArrivals, setLiveArrivals] = useState<BusServiceArrival[] | null>(null);
 
   // Active in-app notification toast
   const [activeToast, setActiveToast] = useState<{
@@ -66,10 +68,79 @@ export default function App() {
     type: 'alarm' | 'delay';
   } | null>(null);
 
-  // Calculate live arrival board for currently selected stop
+  // Fetch live bus arrivals from serverless endpoint /api/busarrivals
+  const fetchLiveArrivals = useCallback(async (stopCode: string) => {
+    try {
+      const response = await fetch(`/api/busarrivals?BusStopCode=${encodeURIComponent(stopCode)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.Services && Array.isArray(data.Services) && data.Services.length > 0) {
+          const parsed: BusServiceArrival[] = data.Services.map((srv: any) => {
+            const parseNext = (nb: any, visitNum: number) => {
+              if (!nb || !nb.EstimatedArrival) return undefined;
+              const etaDate = new Date(nb.EstimatedArrival);
+              const diffMs = etaDate.getTime() - Date.now();
+              const diffMins = Math.max(0, Math.round(diffMs / 60000));
+              return {
+                estimatedArrival: diffMins <= 0 ? 'Arr' : `${diffMins}m`,
+                estimatedMinutes: diffMins,
+                load: (nb.Load || 'SEA') as any,
+                feature: (nb.Feature === 'WAB' ? 'WAB' : 'NORM') as any,
+                type: (nb.Type || 'SD') as any,
+                latitude: nb.Latitude ? parseFloat(nb.Latitude) : undefined,
+                longitude: nb.Longitude ? parseFloat(nb.Longitude) : undefined,
+                visitNumber: visitNum,
+                originCode: nb.OriginCode || '',
+                destinationCode: nb.DestinationCode || '',
+              };
+            };
+
+            const nextBus = parseNext(srv.NextBus, 1) || {
+              estimatedArrival: 'Arr',
+              estimatedMinutes: 0,
+              load: 'SEA' as const,
+              feature: 'WAB' as const,
+              type: 'SD' as const,
+              visitNumber: 1,
+              originCode: '',
+              destinationCode: '',
+            };
+
+            return {
+              serviceNo: srv.ServiceNo,
+              operator: srv.Operator || 'SBST',
+              nextBus,
+              nextBus2: parseNext(srv.NextBus2, 2),
+              nextBus3: parseNext(srv.NextBus3, 3),
+              inDelay: false,
+            };
+          });
+
+          setLiveArrivals(parsed);
+          setApiSource('live_lta');
+          return;
+        }
+      }
+      // If 401 (missing key) or empty, fall back to high-fidelity simulation
+      setLiveArrivals(null);
+      setApiSource('simulated');
+    } catch {
+      setLiveArrivals(null);
+      setApiSource('simulated');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLiveArrivals(selectedStop.code);
+  }, [selectedStop.code, fetchLiveArrivals]);
+
+  // Calculate arrival board: use live arrivals if available, else simulated LTA calculation
   const arrivals: BusServiceArrival[] = useMemo(() => {
+    if (liveArrivals && liveArrivals.length > 0) {
+      return liveArrivals;
+    }
     return calculateArrivalsForStop(selectedStop.code, liveBuses);
-  }, [selectedStop, liveBuses]);
+  }, [selectedStop, liveBuses, liveArrivals]);
 
   // Handle Favorites toggle
   const handleToggleFavorite = (stopCode: string) => {
@@ -279,9 +350,16 @@ export default function App() {
             </span>
             <span aria-hidden="true" className="hidden sm:inline">·</span>
             <span className="hidden sm:inline">{selectedStop.road}</span>
-            <span aria-hidden="true">·</span>
+            <span aria-hidden="true" className="hidden sm:inline">·</span>
             <span className="text-slate-400">
               Simulated Location: <strong className="text-sky-300">{userLocation.name}</strong>
+            </span>
+            <span aria-hidden="true" className="hidden sm:inline">·</span>
+            <span className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${apiSource === 'live_lta' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              <span className={apiSource === 'live_lta' ? 'text-emerald-300 font-semibold' : 'text-slate-400'}>
+                {apiSource === 'live_lta' ? 'Live LTA DataMall v3' : 'Simulated (LTA_ACCOUNT_KEY pending in /api)'}
+              </span>
             </span>
           </div>
 
@@ -290,10 +368,17 @@ export default function App() {
               <Clock className="w-3.5 h-3.5 text-slate-500" />
               <span>Updated: {lastUpdatedTime} SGT</span>
             </span>
-            <span className="flex items-center gap-1.5 text-emerald-400">
+            <button
+              onClick={() => {
+                fetchLiveArrivals(selectedStop.code);
+                setRefreshCountdown(15);
+              }}
+              className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 cursor-pointer"
+              title="Click to refresh live bus arrivals"
+            >
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
               <span>{refreshCountdown}s</span>
-            </span>
+            </button>
           </div>
         </div>
 
